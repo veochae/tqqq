@@ -8,270 +8,357 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from collections import Counter
+import matplotlib.pyplot as plt
 
-###macd
-def macd(end_date,code):
-    url = f'https://api.polygon.io/v1/indicators/macd/{code}?timestamp.lte={end_date}&timespan=day&adjusted=true&short_window=7&long_window=14&signal_window=9&series_type=close&order=asc&limit=5000&apiKey=RMnfdtr9nmyTjXjgbNJeX_I5pIcowZpl'
-    r = requests.get(url)
-    data = r.json()
 
-    value = []
-    signal = []
-    histogram = []
-    time = []
+######################################################################
+######################################################################
+#### INTERNAL FUNCTIONS
+######################################################################
+######################################################################
 
-    for d in data['results']['values']:
-        value.append(d['value'])
-        signal.append(d['signal'])
-        histogram.append(d['histogram'])
-        time.append(datetime.fromtimestamp(int(str(d['timestamp'])[:-3])))
+#data collection function
 
-    df_macd = pd.DataFrame({'time': time, 'value': value, 'signal': signal, 'histogram': histogram})
-    return df_macd
-
-###stock
-
-def stock(end_date,code):
-    url = f'https://api.polygon.io/v2/aggs/ticker/{code}/range/1/day/2017-01-01/{end_date}?adjusted=true&sort=asc&limit=50000&apiKey=RMnfdtr9nmyTjXjgbNJeX_I5pIcowZpl'
+def data_collection(load_ticker, load_interval, load_time_unit, load_start_date, load_end_date, polygon_api_key):
+    #Load data from Polygon.io
+    url = f'https://api.polygon.io/v2/aggs/ticker/{load_ticker}/range/{load_interval}/{load_time_unit}/{load_start_date}/{load_end_date}?adjusted=true&sort=asc&limit=50000&apiKey={polygon_api_key}'
     r = requests.get(url)
     data = r.json()
 
     close = []
-    high = []
-    low = []
     time = []
+
+    while 'next_url' in data.keys():
+        for d in data['results']:
+            close.append(d['c'])
+            time.append(datetime.fromtimestamp(int(str(d['t'])[:-3])))
+
+        url = data['next_url']+f"&apiKey={polygon_api_key}"
+        r = requests.get(url)
+        data = r.json()
 
     for d in data['results']:
         close.append(d['c'])
-        high.append(d['h'])
-        low.append(d['l'])
         time.append(datetime.fromtimestamp(int(str(d['t'])[:-3])))
 
-    df_stock = pd.DataFrame({'time': time, 'high': high, 'low': low, 'close': close})
-    return df_stock
+    dff = pd.DataFrame({'time': time, 'close': close});
 
-###ema
-def ema(end_date,code):
-    url = f'https://api.polygon.io/v1/indicators/ema/{code}?timestamp.lte={end_date}&timespan=day&adjusted=true&window=50&series_type=close&order=asc&limit=5000&apiKey=RMnfdtr9nmyTjXjgbNJeX_I5pIcowZpl'
-    r = requests.get(url)
-    data = r.json()
+    dff['time'] = pd.to_datetime(dff['time'])
 
-    value = []
-    time = []
+    return dff
 
-    for d in data['results']['values']:
-        value.append(d['value'])
-        time.append(datetime.fromtimestamp(int(str(d['timestamp'])[:-3])))
-
-    df_ema = pd.DataFrame({'time': time, 'value': value})
-    return df_ema
-
-###rsi
-def rsi(end_date,code):
-    url = f'https://api.polygon.io/v1/indicators/rsi/{code}?timestamp.lte={end_date}&timespan=day&adjusted=true&window=14&series_type=close&order=asc&limit=5000&apiKey=RMnfdtr9nmyTjXjgbNJeX_I5pIcowZpl'
-    r = requests.get(url)
-    data = r.json()
-
-    value = []
-    time = []
-
-    for d in data['results']['values']:
-        value.append(d['value'])
-        time.append(datetime.fromtimestamp(int(str(d['timestamp'])[:-3])))
-
-    df_rsi = pd.DataFrame({'time': time, 'value': value})
-    return df_rsi
-
-
-
-start_date = st.date_input("Choose a Start Date", value=None)
-end_date = str(st.date_input("Choose a End Date", value = None))
-code = st.text_input("Enter the stock code", value = None)
-
-
-if 'start_date' in globals() and 'end_date' in globals():
-    df_stock = stock(end_date,code)
-    df_ema = ema(end_date,code)
-    df_rsi = rsi(end_date,code)
-    df_macd = macd(end_date,code)
-
-    data_merge = pd.merge(df_stock,df_ema, 'right')
-    data_merge['ema_yr'] = data_merge['value']
-    data_merge = data_merge.drop(['value'], axis = 1)
-
-    data_merge = pd.merge(data_merge,df_rsi, 'left', on = 'time')
-    data_merge['rsi'] = data_merge['value']
-    data_merge = data_merge.drop(['value'], axis = 1)
-
-    df_final = pd.merge(data_merge,df_macd, 'left')
-    df_final['macd'] = df_final['value']
-    df_final = df_final.drop(['value'], axis = 1)
-
-    df_final['ema_macd'] = df_final['macd']/df_final['ema_yr']
-
-    df_final.time = [i.date() for i in df_final.time]
-    df_final = df_final[df_final['time'] >= start_date].reset_index(drop = True)
-
-    x1 = df_final.ema_yr.tolist()
-    x2 = df_final.macd.tolist()
-
-    length = df_final.shape[0] - 10
-
-    ema_slope = [0]*10
-    macd_slope = [0]*10
-
-    for i in range(length):
-        ema_slope.append(linregress([j for j in range(10)],x1[i:i+10]).slope)
-        macd_slope.append(linregress([k for k in range(10)],x2[i:i+10]).slope)
-
-    df_final['ema_slope'] = ema_slope
-    df_final['macd_slope'] = macd_slope
-
-    df_final['ema_macd_slope_ratio'] = df_final['macd_slope']/df_final['ema_slope']
-
-    buy_index = []
-    sell_index = []
-    options = []
-    options2 = []
-
-    most_recent = 0
-    for i,row in enumerate(df_final.iterrows()):
-        #if the overall trend is positive
-        if row[1]['ema_slope'] > 0:
-            #and short term is also positive
-            if row[1]['macd_slope'] > 0:
-                #the macd/ema slope is going to be positive
-                #the short and long term is both trending upwards
-                #consider buying and sell when the ema/macd slope is higher than the current
-                buy_indexx, result_index = next(((i, index+i) for index, value in enumerate(df_final.ema_macd[i:i+15]) if (value >row[1]['ema_macd'])and (index+i > most_recent) ), (None, None))
-                buy_index.append(buy_indexx)
-                sell_index.append(result_index)
-
-                if result_index != None:
-                    most_recent = result_index
-                    options.append('option 1')
-                    options2.append('option 1 T')
-                else:
-                    options.append(None)
-                    options2.append('option 1 F')
-
-            #if the short term trend is negative
+#trade hour check function (internal)
+def check_trading_hours(dte):
+    if dte.hour >= 9 and dte.hour < 16:  # Checking if the hour is between 9 and 16 (4 PM)
+        if dte.hour == 9:
+            if dte.minute > 30:  # If hour is 9, check if minute is > 30
+                return True
             else:
-                #the macd/ema slope is going to be negative
-                #in the long run, it's going up, but in short run, it's going down
-                #look at RSI to see if the stock is undervalued (less than 35) and if it is buy
-                if row[1]['rsi'] <= 70:
-                    buy_indexx, result_index = next(((i, index+i) for index, value in enumerate(df_final.ema_macd[i:i+15]) if (value >row[1]['ema_macd'])and (index+i > most_recent)), (None, None))
-                    buy_index.append(buy_indexx)
-                    sell_index.append(result_index)          
-                    
-                    if result_index != None:
-                        most_recent = result_index
-                        options.append('option 2')
-                        options2.append('option 2 T')
-                    else:
-                        options.append(None)
-                        options2.append('option 2 F')
-                
-                else: 
-                    buy_index.append(None)
-                    sell_index.append(None)
-                    options2.append('option 2 F (RSI)')
-
-        else: #if the overall trend is negative
-            #but the short term trend is positive
-            if row[1]['macd_slope'] > 0:
-                #the macd/ema slope is going to be negative
-                #in the long term perspective it's downward, but short term is positive
-                #look at RSI to see if the stock is overvalued (over 70) and if it is, don't buy
-                if row[1]['rsi'] < 75:
-                    buy_indexx, result_index = next(((i, index+i) for index, value in enumerate(df_final.ema_macd[i:i+15]) if (value >row[1]['ema_macd'])and (index+i > most_recent)), (None, None))
-                    buy_index.append(buy_indexx)
-                    sell_index.append(result_index)          
-                    
-                    if result_index != None:
-                        most_recent = result_index
-                        options.append('option 3')
-                        options2.append('option 3 T')
-                    else:
-                        options.append(None)
-                        options2.append('option 3 F')
-                
-                else: 
-                    buy_index.append(None)
-                    sell_index.append(None)
-                    options2.append('option 3 F (RSI)')
-            
-            #if the short term trend is also negative
-            else:
-                #the macd/ema slope is going to be positive
-                #the short and long term is both trending downwards
-                #consider buying and selling when the ema/macd slope is higher than the current (put option)
-                #but for the sake of just stocks, don't buy
-                buy_index.append(None)
-                sell_index.append(None)        
-                options.append(None)
-                options2.append('option FF')    
-
-    amount = []
-    inputd = []
-    t_f = []
-    dates_bought = []
-    dates_sold = []
-
-    b = [i for i in buy_index if i is not None]
-    s = [i for i in sell_index if i is not None]
-    o = [i for i in options if i is not None]
-
-    for i in range(len(b)):
-        amount.append(df_final.close[s[i]] - df_final.close[b[i]])
-        inputd.append(df_final.close[b[i]])
-        dates_bought.append(df_final.time[b[i]])
-        dates_sold.append(df_final.time[s[i]])
-        if df_final.close[s[i]] - df_final.close[b[i]] >0:
-            t_f.append(1)
+                return False
         else:
-            t_f.append(0)
-
-
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    fig.add_trace(
-        go.Scatter(x = df_final.time, y = df_final.close, name = 'close price'),
-        secondary_y=False,
-    )
-
-    fig.add_trace(
-        go.Scatter(x = df_final.time , y = df_final.ema_macd, name = 'ema macd ratio'),
-        secondary_y=True,
-    )
-
-    # fig.add_trace(
-    #     go.Scatter(x = df_final.time , y = df_final.ema_macd_slope_ratio, name = 'ema macd slope'),
-    #     secondary_y=True,
-    # )
-    # for date in [i for i in dates_bought]:
-    #     fig.add_vline(x=date, line_width=3, line_dash="dash", line_color="green")
-
-    # for d in [i for i in dates_sold]:
-    #     fig.add_vline(x=d, line_width=1, line_dash="dash", line_color="yellow")
-
-
-    st.plotly_chart(fig,theme="streamlit", use_container_width=True)
-
-    st.dataframe(pd.DataFrame({'option':o, 'amount':amount, 't_f': t_f}).groupby(['option','t_f'])['amount'].sum())
-    st.info(f"Number of Transactions: {len(amount)}")
-    st.info(f"Total Number of Trading Days: {df_final.shape[0]}")
-    st.info(f"Total Profit: ${np.sum(amount)}")
-    st.info(f"Total Invested: S{np.sum(inputd)}")
-    st.info(f"Total Returns Pct: {round(np.sum(amount)/np.sum(inputd),4)}")
-    st.info(f"Average Profit: {np.sum(amount)/len(amount)}")
-    st.info(f"Number of Transactions Lost: {len(t_f)-sum(t_f)},{(len(t_f)-sum(t_f))/len(t_f)}")
-    st.info(f"Number of Transactions Won: {sum(t_f)},{sum(t_f)/len(t_f)}")
+            return True
+    elif dte.hour == 16 and dte.minute == 0:
+        return True
+    else:
+        return False
     
-    cnt = Counter()
-    for word in options2:
-        cnt[word] += 1
+#trade hour check function (external)
     
-    st.info(cnt)
+def check_trading_hour_external(df):
+    df['is_trading_hours'] = df['time'].apply(check_trading_hours)
+    return df
+
+#buy_track calculation function
+
+def buy_track(df):
+    # Calculate the date of the day before
+    df['previous_day'] = df['time'].apply(lambda x: x - pd.Timedelta(days=1))
+    df['previous_day'] = pd.to_datetime(df['previous_day'])
+    df['previous_day_4pm'] = df['previous_day'].apply(lambda x: x.replace(hour=16, minute=0))
+
+    # Merge with itself to find the price of the day before at 4 pm
+    merged_df = pd.merge(df, df, left_on='previous_day_4pm', right_on='time', suffixes=('', '_previous'))
+
+    # Calculate the decrease percentage compared to the price of the day before at 4 pm
+    merged_df['price_decrease_percentage'] = (merged_df['close'] - merged_df['close_previous']) / merged_df['close_previous'] * 100
+
+    # Make a new dataframe and clean it up
+    buy_track_temp = merged_df.copy()
+    buy_track_temp=buy_track_temp.drop(columns=['previous_day', 'time_previous', 'is_trading_hours_previous', 'previous_day_previous', 'previous_day_4pm_previous'])
+
+    return df, buy_track_temp
+
+def buy_track_2(df, buy_track_temp, price_dec_pct_buy):
+    # Make a new dataframe that tracks past buy signals
+    buy_track = buy_track_temp[buy_track_temp['price_decrease_percentage'] <= price_dec_pct_buy]
+    buy_track = buy_track[buy_track['is_trading_hours'] == True]
+    df['included_in_buy_track'] = df['time'].isin(buy_track['time'])
+
+    return df
+
+#extracting df2
+def df2_extract(df):
+    df2 = df[df['is_trading_hours'] == True].reset_index(drop= True)
+    return df2
+
+#sell date calculation function
+def sell_track(df2, price_inc_pct_sell, pain_tolerance, max_days_til_sold):
+    sell_date_info = []
+
+    for i, row in df2.iterrows():
+        if row['included_in_buy_track']:
+            sell_index, date_sold, value = next(((index+i+1, df2.time[index+i+1], value) for index, value in enumerate(df2.close[i+1:i+max_days_til_sold]) if (value >= row['close'] * (1 + (0.01 * price_inc_pct_sell))) or (value <= row['close'] * (1 + (0.01 * pain_tolerance)))), (df2.index[i:i+max_days_til_sold].tolist()[-1],df2.time[i:i+max_days_til_sold].tolist()[-1], df2.close[i:i+max_days_til_sold].tolist()[-1]))
+            sell_date_info.append([date_sold,value,sell_index])
+        else:
+            sell_date_info.append([None,None,None])    
+
+    df2['sell_date'] = [j[0] for j in sell_date_info]
+    df2['sell_price'] = [j[1] for j in sell_date_info]
+    df2['sell_index'] = [j[2] for j in sell_date_info]
+
+    # Calculate the difference in time between 'time' and 'sell_date' and save it to a new column named 'gap'
+    df2['gap'] = (df2['sell_index'] - df2.index)/78
+
+    # Calculate the increase percentage of 'sell_price' compared to 'close' for each row
+    df2['gain'] = ((df2['sell_price'] - df2['close']) / df2['close']) * 100
+
+    df2['date'] = df2['time'].dt.date
+    temp = pd.DataFrame(df2.groupby('date')['included_in_buy_track'].apply(lambda x: int(x.idxmax(skipna=False)) if any(x) else None)).reset_index(drop = True).included_in_buy_track.to_list()
+
+    res = [True if i in temp else False for i in range(df2.shape[0]) ]
+
+    df2['first_buy'] = res
+
+    return df2
+
+
+######################################################################
+######################################################################
+#### SIDEBAR
+######################################################################
+######################################################################
+
+
+
+with st.sidebar.form('inputs'):
+    st.header("Control Panel")
+    load_start_date = str(st.date_input("Choose a Start Date", value=None))
+    load_end_date = str(st.date_input("Choose a End Date", value = None))
+    load_ticker = st.text_input("Enter the stock code", value = None)
+    pain_tolerance = float(st.text_input("Pain Tolerance Percentage", value = '-1.75'))
+    max_days_til_sold = float(st.text_input("Max Days til Sold", value = '15')) * 78
+
+    price_dec_pct_buy = []
+    price_inc_pct_sell = []
+    number_of_observance = int(st.text_input("Combination Count", value = '4'))    
+
+    submitted = st.form_submit_button("Submit")
+
+    if submitted:
+        st.session_state['submitted'] = True
+
+    
+if st.session_state['submitted']:
+    with st.sidebar.form('inputs2'):
+        st.header("Buy/Sell Pct Combinations")
+        for i in range(number_of_observance):
+            st.write(f"Combination {i+1}")
+            vars()[f'buy_{i}'] = float(st.text_input(f"Buy Percentage {i+1}", value = '0'))
+            vars()[f'sell_{i}'] = float(st.text_input(f"Sell Percentage {i+1}", value = '0'))
+
+        submitted_2 = st.form_submit_button("Submit Combinations")
+
+for i in range(number_of_observance):
+    price_dec_pct_buy.append(vars()[f'buy_{i}'])
+    price_inc_pct_sell.append(vars()[f'sell_{i}'])
+
+if submitted_2:
+    st.header(f"{load_ticker} Stock Trading Dashboard")
+    progress_text = "Defining Variables"
+    my_bar = st.progress(0, text=progress_text)
+
+    # Parameters in percentage; How much % change from the prev day closing price to initiate a buy, and how much % to exit the position
+    load_interval = '5'
+    load_time_unit = 'minute'
+    polygon_api_key = 'RMnfdtr9nmyTjXjgbNJeX_I5pIcowZpl'
+
+    my_bar.progress(10, "Data Collection in Progress")
+    df = data_collection(load_ticker, load_interval, load_time_unit, load_start_date, load_end_date, polygon_api_key)
+
+    my_bar.progress(20, "Checking for Trading Hours (T/F)")
+    df = check_trading_hour_external(df)
+
+    my_bar.progress(30, "Checking whether in Buy Track")
+    df, buy_track_temp =  buy_track(df)
+
+    trades = []
+    pcts = []
+    avg_gaps = []
+    med_gaps = []
+    pct_25 = []
+    pct_75 = []
+    yrs= []
+    num_t = []
+    gain_t = []
+    loss_t = []
+
+    num_col_build = round(len(price_dec_pct_buy)/2,0)
+
+    for i in range(int(num_col_build)):
+        vars()[f'col{i*2}'], vars()[f'col{(i*2)+1}'] = st.columns(2)
+
+    for i in range(len(price_dec_pct_buy)):
+        with vars()[f'col{i}']:
+            st.subheader(f"Combination {i+1}")
+            vars()[f'col{i}_0'], vars()[f'col{i}_1'] = st.columns(2)
+            with vars()[f'col{i}_0']:
+                st.info(f"Buy = {price_dec_pct_buy[i]}")
+            with vars()[f'col{i}_1']:                    
+                st.warning(f"Sell = {price_inc_pct_sell[i]}")
+            vars()[f'tab{i}_1'], vars()[f'tab{i}_2'], vars()[f'tab{i}_3'] = st.tabs(["Overall Stats", "Gap Distribution", "Monthly Trade"])
+
+    for i in range(len(price_dec_pct_buy)):
+        my_bar.progress((i+4)*10, f"Calculating Sell Track (PCT = {price_dec_pct_buy[i]})")
+        df = buy_track_2(df, buy_track_temp, price_dec_pct_buy[i])
+        df2 = df2_extract(df)
+        df2 = sell_track(df2, price_inc_pct_sell[i],pain_tolerance,int(max_days_til_sold))
+        
+        df3 = df2[df2['first_buy'] == True].reset_index(drop = True)
+        df3['year'] = pd.to_datetime(df3['time']).dt.year
+        df3['dow'] = pd.to_datetime(df3['time']).dt.day_of_week
+
+        # Group the result dataframe by year
+        grouped_result = df3.groupby('year')    
+
+        for year, group in grouped_result:
+            # Count the number of rows in the result dataframe
+            average_gap = round(group['gap'].mean(),2)
+            median_gap = round(group['gap'].median(),2)
+            percentile_25 = round(np.percentile(group['gap'],25),2)
+            percentile_75 = round(np.percentile(group['gap'],75),2)
+            num_trades = group.shape[0]
+            group['gain_or_not'] = [True if group['sell_price'].tolist()[i] > group['close'].tolist()[i] else False for i in range(group.shape[0])]
+
+            avg_gaps.append(average_gap)
+            med_gaps.append(median_gap)
+            pct_25.append(percentile_25)
+            pct_75.append(percentile_75)
+            num_t.append(num_trades)
+            yrs.append(str(year))
+            gain_t.append(group.groupby('gain_or_not').count()['time'][1])
+            loss_t.append(group.groupby('gain_or_not').count()['time'][0])            
+            
+            num_trades_gap_lower_than_5 = group[group['gap'] < 1].shape[0]
+            num_trades_gap_lower_than_10 = group[group['gap'] < 3].shape[0]
+            num_trades_gap_lower_than_15 = group[group['gap'] < 5].shape[0]
+
+            trades_temp =[num_trades_gap_lower_than_5,num_trades_gap_lower_than_10,num_trades_gap_lower_than_15]
+            pcts+=[round(trades_temp[i] / num_trades * 100,2) for i in range(3)]
+            trades += [num_trades_gap_lower_than_5,num_trades_gap_lower_than_10,num_trades_gap_lower_than_15]
+
+        years = ['2019']* 3 + ['2020']*3 + ['2021']* 3 + ['2022']*3 + ['2023']* 3 + ['2024']*3
+
+        data = {'Trade Days': [1,3,5]*6,
+                'Count': trades,
+                'years': years,
+                'pct': pcts}
+        
+        data = pd.DataFrame(data)
+
+        fig = px.bar(data,
+                    x = 'Trade Days', 
+                    y = 'pct',
+                    color = 'years',
+                    hover_data=['Count'],
+                    orientation='v', 
+                    barmode= 'group', 
+                    text = 'pct',
+                    title = f'By Year Trading Days and PCT')
+        
+        with vars()[f'tab{i}_1']:
+            st.plotly_chart(fig,theme="streamlit", use_container_width=True)   
+
+            show_data = pd.DataFrame({'Year': yrs, 
+                                      'Trade Count': num_t, 
+                                      'Avg Gap': avg_gaps, 
+                                      'Med Gap': med_gaps, 
+                                      '25 Pct': pct_25, 
+                                      '75 Pct': pct_75, 
+                                      'Gain T': gain_t, 
+                                      'Loss T': loss_t, 
+                                      'Gain T (%)': [round((gain_t[i]/num_t[i])*100,2) for i in range(len(num_t))]})
+            st.dataframe(show_data)
+
+        with vars()[f'tab{i}_2']:
+            fig2 = px.histogram(df3, 
+                                x= 'gap', 
+                                nbins = 30, 
+                                title = 'Distribution of Time Gap between Buy and Sell',
+                                labels = {'x': 'Time Gap (days)', 'y': 'Frequency'})
+            
+            st.plotly_chart(fig2,theme="streamlit", use_container_width=True)   
+
+        with vars()[f'tab{i}_3']:
+            fig = plt.figure(figsize=(15, 5))  # Adjust width and height as needed
+
+            # Extract year and month from the 'time' column
+            df3['year_month'] = df3['time'].dt.to_period('M')
+
+            # Count the number of datetime rows by year and month
+            year_month_counts = df3.groupby('year_month').size()
+
+            # Plot the counts
+            year_month_counts.plot(kind='bar', color='skyblue')
+
+            # Add labels and title
+            plt.title('Number of trades by Year and Month')
+            plt.xlabel('Year-Month')
+            plt.ylabel('Count')
+
+            for i, bar in enumerate(plt.gca().patches):
+                plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+                            str(round(bar.get_height(), 2)), ha='center', va='bottom')
+
+            # Display the plot
+            plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+            fig.tight_layout()  # Adjust layout to prevent clipping of labels
+            st.pyplot(fig)
+
+
+    # with vars()[f'tab{i}_4']:
+    #     avg_gap_by_month = df3.groupby('year_month')['gap'].mean()
+
+    #     # Set the figure size
+    #     fig = plt.figure(figsize=(15, 5))  # Adjust width and height as needed
+
+    #     # Plot bar chart with average gap for each year-month
+    #     avg_gap_by_month.plot(kind='bar', color='skyblue')
+
+    #     # Add labels and title
+    #     plt.title('Average Time Gap between Buy and Sell by Year-Month')
+    #     plt.xlabel('Year-Month')
+    #     plt.ylabel('Average Gap (days)')
+
+    #     # Display the plot
+    #     plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+    #     fig.tight_layout()  # Adjust layout to prevent clipping of labels
+
+    #     # Add labels for each bar
+    #     for i, bar in enumerate(plt.gca().patches):
+    #         plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+    #                     str(round(bar.get_height(), 2)), ha='center', va='bottom')
+            
+    #     st.pyplot(fig)
+
+        trades = []
+        pcts = []
+        yrs = []
+        num_t = []
+        avg_gaps = []
+        med_gaps = []
+        pct_25 = []
+        pct_75 = []
+        gain_t = []
+        loss_t = []
+
+    my_bar.progress(100, "Completed!")
