@@ -247,11 +247,13 @@ try:
                 yrs.append(str(year))
                 try:
                     gain_t.append(group.groupby('gain_or_not').count()['time'][1])
-                except:
+                except Exception as e:
+                    print(e)
                     gain_t.append(0)
                 try:
                     loss_t.append(group.groupby('gain_or_not').count()['time'][0])            
-                except:
+                except Exception as e:
+                    print(e)
                     loss_t.append(0)
                 
                 num_trades_gap_lower_than_5 = group[group['gap'] < 1].shape[0]
