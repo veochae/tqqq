@@ -265,6 +265,10 @@ if submitted_2:
 
         years = ['2019']* 3 + ['2020']*3 + ['2021']* 3 + ['2022']*3 + ['2023']* 3 + ['2024']*3
 
+        print(trades)
+        print(years)
+        print(pcts)
+
         data = {'Trade Days': [1,3,5]*6,
                 'Count': trades,
                 'years': years,
@@ -331,31 +335,6 @@ if submitted_2:
             fig.tight_layout()  # Adjust layout to prevent clipping of labels
             st.pyplot(fig)
 
-
-    # with vars()[f'tab{i}_4']:
-    #     avg_gap_by_month = df3.groupby('year_month')['gap'].mean()
-
-    #     # Set the figure size
-    #     fig = plt.figure(figsize=(15, 5))  # Adjust width and height as needed
-
-    #     # Plot bar chart with average gap for each year-month
-    #     avg_gap_by_month.plot(kind='bar', color='skyblue')
-
-    #     # Add labels and title
-    #     plt.title('Average Time Gap between Buy and Sell by Year-Month')
-    #     plt.xlabel('Year-Month')
-    #     plt.ylabel('Average Gap (days)')
-
-    #     # Display the plot
-    #     plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
-    #     fig.tight_layout()  # Adjust layout to prevent clipping of labels
-
-    #     # Add labels for each bar
-    #     for i, bar in enumerate(plt.gca().patches):
-    #         plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-    #                     str(round(bar.get_height(), 2)), ha='center', va='bottom')
-            
-    #     st.pyplot(fig)
 
         trades = []
         pcts = []
