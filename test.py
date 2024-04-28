@@ -156,220 +156,216 @@ with st.sidebar.form('inputs'):
 
     if submitted:
         st.session_state['submitted'] = True
+    
+if st.session_state['submitted']:
+    with st.sidebar.form('inputs2'):
+        st.header("Buy/Sell Pct Scenarios")
+        for i in range(number_of_observance):
+            st.write(f"Combination {i+1}")
+            vars()[f'buy_{i}'] = float(st.text_input(f"Buy Percentage {i+1} (-)", value = '0'))
+            vars()[f'sell_{i}'] = float(st.text_input(f"Sell Percentage {i+1}", value = '0'))
 
-try:    
-    if st.session_state['submitted']:
-        with st.sidebar.form('inputs2'):
-            st.header("Buy/Sell Pct Scenarios")
-            for i in range(number_of_observance):
-                st.write(f"Combination {i+1}")
-                vars()[f'buy_{i}'] = float(st.text_input(f"Buy Percentage {i+1} (-)", value = '0'))
-                vars()[f'sell_{i}'] = float(st.text_input(f"Sell Percentage {i+1}", value = '0'))
+        submitted_2 = st.form_submit_button("Submit Scenario")
 
-            submitted_2 = st.form_submit_button("Submit Scenario")
+for i in range(number_of_observance):
+    price_dec_pct_buy.append(vars()[f'buy_{i}'])
+    price_inc_pct_sell.append(vars()[f'sell_{i}'])
 
-    for i in range(number_of_observance):
-        price_dec_pct_buy.append(vars()[f'buy_{i}'])
-        price_inc_pct_sell.append(vars()[f'sell_{i}'])
+if submitted_2:
+    st.header(f"{load_ticker} Stock Trading Dashboard")
+    progress_text = "Defining Variables"
+    my_bar = st.progress(0, text=progress_text)
 
-    if submitted_2:
-        st.header(f"{load_ticker} Stock Trading Dashboard")
-        progress_text = "Defining Variables"
-        my_bar = st.progress(0, text=progress_text)
+    # Parameters in percentage; How much % change from the prev day closing price to initiate a buy, and how much % to exit the position
+    load_interval = '5'
+    load_time_unit = 'minute'
+    polygon_api_key = 'RMnfdtr9nmyTjXjgbNJeX_I5pIcowZpl'
 
-        # Parameters in percentage; How much % change from the prev day closing price to initiate a buy, and how much % to exit the position
-        load_interval = '5'
-        load_time_unit = 'minute'
-        polygon_api_key = 'RMnfdtr9nmyTjXjgbNJeX_I5pIcowZpl'
+    my_bar.progress(10, "Data Collection in Progress")
+    df = data_collection(load_ticker, load_interval, load_time_unit, load_start_date, load_end_date, polygon_api_key)
 
-        my_bar.progress(10, "Data Collection in Progress")
-        df = data_collection(load_ticker, load_interval, load_time_unit, load_start_date, load_end_date, polygon_api_key)
+    my_bar.progress(20, "Checking for Trading Hours (T/F)")
+    df = check_trading_hour_external(df)
 
-        my_bar.progress(20, "Checking for Trading Hours (T/F)")
-        df = check_trading_hour_external(df)
+    my_bar.progress(30, "Checking whether in Buy Track")
+    df, buy_track_temp =  buy_track(df)
 
-        my_bar.progress(30, "Checking whether in Buy Track")
-        df, buy_track_temp =  buy_track(df)
+    trades = []
+    pcts = []
+    avg_gaps = []
+    med_gaps = []
+    pct_25 = []
+    pct_75 = []
+    yrs= []
+    num_t = []
+    gain_t = []
+    loss_t = []
+
+    num_col_build = round(len(price_dec_pct_buy)/2,0)
+
+    for i in range(int(num_col_build)):
+        vars()[f'col{i*2}'], vars()[f'col{(i*2)+1}'] = st.columns(2)
+
+    for i in range(len(price_dec_pct_buy)):
+        with vars()[f'col{i}']:
+            st.subheader(f"Scenario {i+1}")
+            vars()[f'col{i}_0'], vars()[f'col{i}_1'] = st.columns(2)
+            with vars()[f'col{i}_0']:
+                st.info(f"Buy = {price_dec_pct_buy[i]}")
+            with vars()[f'col{i}_1']:                    
+                st.warning(f"Sell = {price_inc_pct_sell[i]}")
+            vars()[f'tab{i}_1'], vars()[f'tab{i}_2'], vars()[f'tab{i}_3'] = st.tabs(["Overall Stats", "Gap Distribution", "Monthly Trade"])
+
+    for i in range(len(price_dec_pct_buy)):
+        my_bar.progress((i+4)*10, f"Calculating Sell Track (PCT = {price_dec_pct_buy[i]})")
+        df = buy_track_2(df, buy_track_temp, price_dec_pct_buy[i])
+        df2 = df2_extract(df)
+        df2 = sell_track(df2, price_inc_pct_sell[i],pain_tolerance,int(max_days_til_sold))
+        
+        df3 = df2[df2['first_buy'] == True].reset_index(drop = True)
+        df3['year'] = pd.to_datetime(df3['time']).dt.year
+        df3['dow'] = pd.to_datetime(df3['time']).dt.day_of_week
+
+        # Group the result dataframe by year
+        grouped_result = df3.groupby('year')    
+
+        for year, group in grouped_result:
+            # Count the number of rows in the result dataframe
+            average_gap = round(group['gap'].mean(),2)
+            median_gap = round(group['gap'].median(),2)
+            percentile_25 = round(np.percentile(group['gap'],25),2)
+            percentile_75 = round(np.percentile(group['gap'],75),2)
+            num_trades = group.shape[0]
+            group['gain_or_not'] = [True if group['sell_price'].tolist()[i] > group['close'].tolist()[i] else False for i in range(group.shape[0])]
+
+            avg_gaps.append(average_gap)
+            med_gaps.append(median_gap)
+            pct_25.append(percentile_25)
+            pct_75.append(percentile_75)
+            num_t.append(num_trades)
+            yrs.append(str(year))
+            try:
+                gain_t.append(group.groupby('gain_or_not').count()['time'][1])
+            except Exception as e:
+                print(e)
+                gain_t.append(0)
+            try:
+                loss_t.append(group.groupby('gain_or_not').count()['time'][0])            
+            except Exception as e:
+                print(e)
+                loss_t.append(0)
+            
+            num_trades_gap_lower_than_5 = group[group['gap'] < 1].shape[0]
+            num_trades_gap_lower_than_10 = group[group['gap'] < 3].shape[0]
+            num_trades_gap_lower_than_15 = group[group['gap'] < 5].shape[0]
+
+            trades_temp =[num_trades_gap_lower_than_5,num_trades_gap_lower_than_10,num_trades_gap_lower_than_15]
+            pcts+=[round(trades_temp[i] / num_trades * 100,2) for i in range(3)]
+            trades += [num_trades_gap_lower_than_5,num_trades_gap_lower_than_10,num_trades_gap_lower_than_15]
+
+        years = ['2019']* 3 + ['2020']*3 + ['2021']* 3 + ['2022']*3 + ['2023']* 3 + ['2024']*3
+
+        data = {'Trade Days': [1,3,5]*6,
+                'Count': trades,
+                'years': years,
+                'pct': pcts}
+        
+        data = pd.DataFrame(data)
+
+        fig = px.bar(data,
+                    x = 'Trade Days', 
+                    y = 'pct',
+                    color = 'years',
+                    hover_data=['Count'],
+                    orientation='v', 
+                    barmode= 'group', 
+                    text = 'pct',
+                    title = f'By Year Trading Days and PCT')
+        
+        with vars()[f'tab{i}_1']:
+            st.plotly_chart(fig,theme="streamlit", use_container_width=True)   
+
+            show_data = pd.DataFrame({'Year': yrs, 
+                                    'Trade Count': num_t, 
+                                    'Avg Gap': avg_gaps, 
+                                    'Med Gap': med_gaps, 
+                                    '25 Pct': pct_25, 
+                                    '75 Pct': pct_75, 
+                                    'Gain T': gain_t, 
+                                    'Loss T': loss_t, 
+                                    'Gain T (%)': [round((gain_t[i]/num_t[i])*100,2) for i in range(len(num_t))]})
+            st.dataframe(show_data)
+
+        with vars()[f'tab{i}_2']:
+            fig2 = px.histogram(df3, 
+                                x= 'gap', 
+                                nbins = 30, 
+                                title = 'Distribution of Time Gap between Buy and Sell',
+                                labels = {'x': 'Time Gap (days)', 'y': 'Frequency'})
+            
+            st.plotly_chart(fig2,theme="streamlit", use_container_width=True)   
+
+        with vars()[f'tab{i}_3']:
+            fig = plt.figure(figsize=(15, 5))  # Adjust width and height as needed
+
+            # Extract year and month from the 'time' column
+            df3['year_month'] = df3['time'].dt.to_period('M')
+
+            # Count the number of datetime rows by year and month
+            year_month_counts = df3.groupby('year_month').size()
+
+            # Plot the counts
+            year_month_counts.plot(kind='bar', color='skyblue')
+
+            # Add labels and title
+            plt.title('Number of trades by Year and Month')
+            plt.xlabel('Year-Month')
+            plt.ylabel('Count')
+
+            for i, bar in enumerate(plt.gca().patches):
+                plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+                            str(round(bar.get_height(), 2)), ha='center', va='bottom')
+
+            # Display the plot
+            plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+            fig.tight_layout()  # Adjust layout to prevent clipping of labels
+            st.pyplot(fig)
+
+
+    # with vars()[f'tab{i}_4']:
+    #     avg_gap_by_month = df3.groupby('year_month')['gap'].mean()
+
+    #     # Set the figure size
+    #     fig = plt.figure(figsize=(15, 5))  # Adjust width and height as needed
+
+    #     # Plot bar chart with average gap for each year-month
+    #     avg_gap_by_month.plot(kind='bar', color='skyblue')
+
+    #     # Add labels and title
+    #     plt.title('Average Time Gap between Buy and Sell by Year-Month')
+    #     plt.xlabel('Year-Month')
+    #     plt.ylabel('Average Gap (days)')
+
+    #     # Display the plot
+    #     plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+    #     fig.tight_layout()  # Adjust layout to prevent clipping of labels
+
+    #     # Add labels for each bar
+    #     for i, bar in enumerate(plt.gca().patches):
+    #         plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+    #                     str(round(bar.get_height(), 2)), ha='center', va='bottom')
+            
+    #     st.pyplot(fig)
 
         trades = []
         pcts = []
+        yrs = []
+        num_t = []
         avg_gaps = []
         med_gaps = []
         pct_25 = []
         pct_75 = []
-        yrs= []
-        num_t = []
         gain_t = []
         loss_t = []
 
-        num_col_build = round(len(price_dec_pct_buy)/2,0)
-
-        for i in range(int(num_col_build)):
-            vars()[f'col{i*2}'], vars()[f'col{(i*2)+1}'] = st.columns(2)
-
-        for i in range(len(price_dec_pct_buy)):
-            with vars()[f'col{i}']:
-                st.subheader(f"Scenario {i+1}")
-                vars()[f'col{i}_0'], vars()[f'col{i}_1'] = st.columns(2)
-                with vars()[f'col{i}_0']:
-                    st.info(f"Buy = {price_dec_pct_buy[i]}")
-                with vars()[f'col{i}_1']:                    
-                    st.warning(f"Sell = {price_inc_pct_sell[i]}")
-                vars()[f'tab{i}_1'], vars()[f'tab{i}_2'], vars()[f'tab{i}_3'] = st.tabs(["Overall Stats", "Gap Distribution", "Monthly Trade"])
-
-        for i in range(len(price_dec_pct_buy)):
-            my_bar.progress((i+4)*10, f"Calculating Sell Track (PCT = {price_dec_pct_buy[i]})")
-            df = buy_track_2(df, buy_track_temp, price_dec_pct_buy[i])
-            df2 = df2_extract(df)
-            df2 = sell_track(df2, price_inc_pct_sell[i],pain_tolerance,int(max_days_til_sold))
-            
-            df3 = df2[df2['first_buy'] == True].reset_index(drop = True)
-            df3['year'] = pd.to_datetime(df3['time']).dt.year
-            df3['dow'] = pd.to_datetime(df3['time']).dt.day_of_week
-
-            # Group the result dataframe by year
-            grouped_result = df3.groupby('year')    
-
-            for year, group in grouped_result:
-                # Count the number of rows in the result dataframe
-                average_gap = round(group['gap'].mean(),2)
-                median_gap = round(group['gap'].median(),2)
-                percentile_25 = round(np.percentile(group['gap'],25),2)
-                percentile_75 = round(np.percentile(group['gap'],75),2)
-                num_trades = group.shape[0]
-                group['gain_or_not'] = [True if group['sell_price'].tolist()[i] > group['close'].tolist()[i] else False for i in range(group.shape[0])]
-
-                avg_gaps.append(average_gap)
-                med_gaps.append(median_gap)
-                pct_25.append(percentile_25)
-                pct_75.append(percentile_75)
-                num_t.append(num_trades)
-                yrs.append(str(year))
-                try:
-                    gain_t.append(group.groupby('gain_or_not').count()['time'][1])
-                except Exception as e:
-                    print(e)
-                    gain_t.append(0)
-                try:
-                    loss_t.append(group.groupby('gain_or_not').count()['time'][0])            
-                except Exception as e:
-                    print(e)
-                    loss_t.append(0)
-                
-                num_trades_gap_lower_than_5 = group[group['gap'] < 1].shape[0]
-                num_trades_gap_lower_than_10 = group[group['gap'] < 3].shape[0]
-                num_trades_gap_lower_than_15 = group[group['gap'] < 5].shape[0]
-
-                trades_temp =[num_trades_gap_lower_than_5,num_trades_gap_lower_than_10,num_trades_gap_lower_than_15]
-                pcts+=[round(trades_temp[i] / num_trades * 100,2) for i in range(3)]
-                trades += [num_trades_gap_lower_than_5,num_trades_gap_lower_than_10,num_trades_gap_lower_than_15]
-
-            years = ['2019']* 3 + ['2020']*3 + ['2021']* 3 + ['2022']*3 + ['2023']* 3 + ['2024']*3
-
-            data = {'Trade Days': [1,3,5]*6,
-                    'Count': trades,
-                    'years': years,
-                    'pct': pcts}
-            
-            data = pd.DataFrame(data)
-
-            fig = px.bar(data,
-                        x = 'Trade Days', 
-                        y = 'pct',
-                        color = 'years',
-                        hover_data=['Count'],
-                        orientation='v', 
-                        barmode= 'group', 
-                        text = 'pct',
-                        title = f'By Year Trading Days and PCT')
-            
-            with vars()[f'tab{i}_1']:
-                st.plotly_chart(fig,theme="streamlit", use_container_width=True)   
-
-                show_data = pd.DataFrame({'Year': yrs, 
-                                        'Trade Count': num_t, 
-                                        'Avg Gap': avg_gaps, 
-                                        'Med Gap': med_gaps, 
-                                        '25 Pct': pct_25, 
-                                        '75 Pct': pct_75, 
-                                        'Gain T': gain_t, 
-                                        'Loss T': loss_t, 
-                                        'Gain T (%)': [round((gain_t[i]/num_t[i])*100,2) for i in range(len(num_t))]})
-                st.dataframe(show_data)
-
-            with vars()[f'tab{i}_2']:
-                fig2 = px.histogram(df3, 
-                                    x= 'gap', 
-                                    nbins = 30, 
-                                    title = 'Distribution of Time Gap between Buy and Sell',
-                                    labels = {'x': 'Time Gap (days)', 'y': 'Frequency'})
-                
-                st.plotly_chart(fig2,theme="streamlit", use_container_width=True)   
-
-            with vars()[f'tab{i}_3']:
-                fig = plt.figure(figsize=(15, 5))  # Adjust width and height as needed
-
-                # Extract year and month from the 'time' column
-                df3['year_month'] = df3['time'].dt.to_period('M')
-
-                # Count the number of datetime rows by year and month
-                year_month_counts = df3.groupby('year_month').size()
-
-                # Plot the counts
-                year_month_counts.plot(kind='bar', color='skyblue')
-
-                # Add labels and title
-                plt.title('Number of trades by Year and Month')
-                plt.xlabel('Year-Month')
-                plt.ylabel('Count')
-
-                for i, bar in enumerate(plt.gca().patches):
-                    plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                                str(round(bar.get_height(), 2)), ha='center', va='bottom')
-
-                # Display the plot
-                plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
-                fig.tight_layout()  # Adjust layout to prevent clipping of labels
-                st.pyplot(fig)
-
-
-        # with vars()[f'tab{i}_4']:
-        #     avg_gap_by_month = df3.groupby('year_month')['gap'].mean()
-
-        #     # Set the figure size
-        #     fig = plt.figure(figsize=(15, 5))  # Adjust width and height as needed
-
-        #     # Plot bar chart with average gap for each year-month
-        #     avg_gap_by_month.plot(kind='bar', color='skyblue')
-
-        #     # Add labels and title
-        #     plt.title('Average Time Gap between Buy and Sell by Year-Month')
-        #     plt.xlabel('Year-Month')
-        #     plt.ylabel('Average Gap (days)')
-
-        #     # Display the plot
-        #     plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
-        #     fig.tight_layout()  # Adjust layout to prevent clipping of labels
-
-        #     # Add labels for each bar
-        #     for i, bar in enumerate(plt.gca().patches):
-        #         plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-        #                     str(round(bar.get_height(), 2)), ha='center', va='bottom')
-                
-        #     st.pyplot(fig)
-
-            trades = []
-            pcts = []
-            yrs = []
-            num_t = []
-            avg_gaps = []
-            med_gaps = []
-            pct_25 = []
-            pct_75 = []
-            gain_t = []
-            loss_t = []
-
-        my_bar.progress(100, "Completed!")
-
-except:
-    st.warning("Complete Previous Steps")
+    my_bar.progress(100, "Completed!")
