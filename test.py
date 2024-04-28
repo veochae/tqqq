@@ -255,6 +255,7 @@ if submitted_2:
                 print(e)
                 loss_t.append(0)
             
+            print(year)
             num_trades_gap_lower_than_5 = group[group['gap'] < 1].shape[0]
             num_trades_gap_lower_than_10 = group[group['gap'] < 3].shape[0]
             num_trades_gap_lower_than_15 = group[group['gap'] < 5].shape[0]
