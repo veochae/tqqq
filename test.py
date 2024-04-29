@@ -250,13 +250,9 @@ if submitted_2:
                 gain_t.append(group.groupby('gain_or_not').count()['time'][1])
             except Exception as e:
                 print(e)
-                gain_t.append(0)
-            try:
-                loss_t.append(group.groupby('gain_or_not').count()['time'][0])            
-            except Exception as e:
-                print(e)
-                loss_t.append(0)
+                gain_t.append(group.groupby('gain_or_not').count()['time'][0])
             
+            loss_t.append(num_t[-1] - gain_t[-1])
             
             num_trades_gap_lower_than_5 = group[group['gap'] < 1].shape[0]
             num_trades_gap_lower_than_10 = group[group['gap'] < 3].shape[0]
