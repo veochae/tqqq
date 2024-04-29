@@ -200,6 +200,7 @@ if submitted_2:
     num_t = []
     gain_t = []
     loss_t = []
+    print_yrs = []
 
     num_col_build = round(len(price_dec_pct_buy)/2,0)
 
@@ -264,15 +265,12 @@ if submitted_2:
             pcts+=[round(trades_temp[i] / num_trades * 100,2) for i in range(3)]
             trades += [num_trades_gap_lower_than_5,num_trades_gap_lower_than_10,num_trades_gap_lower_than_15]
 
-        years = ['2019']* 3 + ['2020']*3 + ['2021']* 3 + ['2022']*3 + ['2023']* 3 + ['2024']*3
+            print_yrs += [str(year)]*3
 
-        print(trades)
-        print(years)
-        print(pcts)
 
-        data = {'Trade Days': [1,3,5]*6,
+        data = {'Trade Days': [1,3,5]*len(yrs),
                 'Count': trades,
-                'years': years,
+                'years': print_yrs,
                 'pct': pcts}
         
         data = pd.DataFrame(data)
@@ -347,5 +345,6 @@ if submitted_2:
         pct_75 = []
         gain_t = []
         loss_t = []
+        print_yrs = []
 
     my_bar.progress(100, "Completed!")
