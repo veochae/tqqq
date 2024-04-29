@@ -237,7 +237,7 @@ if submitted_2:
             percentile_25 = round(np.percentile(group['gap'],25),2)
             percentile_75 = round(np.percentile(group['gap'],75),2)
             num_trades = group.shape[0]
-            group['gain_or_not'] = [True if group['sell_price'].tolist()[i] > group['close'].tolist()[i] else False for i in range(group.shape[0])]
+            group['gain_or_not'] = [True if group['gain'].tolist()[i] > 0 else False for i in range(group.shape[0])]
 
             avg_gaps.append(average_gap)
             med_gaps.append(median_gap)
