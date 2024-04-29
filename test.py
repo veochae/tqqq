@@ -351,6 +351,6 @@ if submitted_2:
     my_bar.progress(100, "Completed!")
 
     st.download_button(label = "Download CSV",
-                       data = df3.to_csv().encode('utf-8')m
+                       data = df3.to_csv().encode('utf-8'),
                        file_name = "df3.csv",
                        mime = 'text/csv')
