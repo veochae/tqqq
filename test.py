@@ -245,6 +245,7 @@ if submitted_2:
             pct_75.append(percentile_75)
             num_t.append(num_trades)
             yrs.append(str(year))
+
             try:
                 gain_t.append(group.groupby('gain_or_not').count()['time'][1])
             except Exception as e:
@@ -256,7 +257,7 @@ if submitted_2:
                 print(e)
                 loss_t.append(0)
             
-            st.write(year)
+            
             num_trades_gap_lower_than_5 = group[group['gap'] < 1].shape[0]
             num_trades_gap_lower_than_10 = group[group['gap'] < 3].shape[0]
             num_trades_gap_lower_than_15 = group[group['gap'] < 5].shape[0]
@@ -348,3 +349,8 @@ if submitted_2:
         print_yrs = []
 
     my_bar.progress(100, "Completed!")
+
+    st.download_button(label = "Download CSV",
+                       data = df3.to_csv().encode('utf-8')m
+                       file_name = "df3.csv",
+                       mime = 'text/csv')
